@@ -1,0 +1,23 @@
+{
+  "name": "nativescript-i18n-firebase",
+  "version": "1.0.0",
+  "description": "i18n module with firebase sync",
+  "main": "index.js",
+  "directories": {
+    "lib": "lib"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "i18n",
+    "firebase",
+    "nativescript"
+  ],
+  "author": "one-more",
+  "license": "ISC",
+  "dependencies": {
+    "moment": "^2.24.0",
+    "node-polyglot": "^2.3.0"
+  }
+}
