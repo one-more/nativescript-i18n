@@ -162,6 +162,11 @@ function loadDefaultLocale() {
         }
         return !isDefault
     });
+
+    xLog(
+        "using default locale: " + defaultLocale,
+    );
+
     return loadLocaleFromFile(defaultLocale).then(fileData => {
         if (fileData) {
             setLocale(defaultLocale, fileData);
