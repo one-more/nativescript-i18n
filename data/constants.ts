@@ -1,1 +1,1 @@
-export const VERSIONS_COLLECTION = "versions";
+export const VERSIONS_COLLECTION = 'versions';

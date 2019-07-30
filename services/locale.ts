@@ -1,276 +1,358 @@
-import {device} from "tns-core-modules/platform";
-import {Folder, knownFolders, File, FileSystemEntity} from "tns-core-modules/file-system";
-import {VERSIONS_COLLECTION} from "../data/constants";
-import {container} from "../lib/di";
+import { device } from 'tns-core-modules/platform';
+import {
+    Folder,
+    knownFolders,
+    File,
+    FileSystemEntity,
+} from 'tns-core-modules/file-system';
+import { VERSIONS_COLLECTION } from '../data/constants';
+import { container } from '../lib/di';
 
-const xLog = (...args) => container.xLog(...args);
-const collection = (...args) => container.collection(...args);
-const snapshotToArray = (...args) => container.snapshotToArray(...args);
+interface Document {
+    get(): Promise<object>;
+}
+
+interface Collection {
+    doc(id: string): Document;
+}
+
+const xLog = (...args): void => container.xLog(...args);
+const collection = (...args): Collection =>
+    container.collection(...args);
+const snapshotToArray = (...args): object[] | object =>
+    container.snapshotToArray(...args);
 
 interface ENV {
-    deviceLocale: string,
-    deviceFullLocale: string,
-    defaultLocale?: string,
-    selectedLocale?: string,
-    localeData: Locale,
+    deviceLocale: string;
+    deviceFullLocale: string;
+    defaultLocale?: string;
+    selectedLocale?: string;
+    localeData: Locale;
 }
 
 interface Locale {
-    [index: string]: string,
+    [index: string]: string;
 }
 
 interface Versions {
-    [index: string]: number
+    [index: string]: number;
 }
 
-const I18N = "i18n";
+const I18N = 'i18n';
 const deviceFullLocale = device.language;
 const deviceLocale = deviceFullLocale.slice(0, 2);
-const VERSIONS_FILE = "versions.json";
+const VERSIONS_FILE = 'versions.json';
 
 const env: ENV = {
     deviceFullLocale,
     deviceLocale,
-    localeData: {}
+    localeData: {},
 };
 
-const currentApp: Folder = <Folder>knownFolders.currentApp();
-const documents: Folder = <Folder>knownFolders.documents();
-const appFolder: Folder = <Folder>currentApp.getFolder(I18N);
-const documentsFolder: Folder = <Folder>documents.getFolder(I18N);
+const currentApp: Folder = knownFolders.currentApp() as Folder;
+const documents: Folder = knownFolders.documents() as Folder;
 
-export function checkLocale() {
-    return copyVersions()
-        .catch(err => {
-            xLog(
-                "copyVersions error",
-                err,
-            );
-            throw err;
-        })
-        .then(() => {
-            return checkForUpdates()
-        })
-        .catch(err => {
-            xLog(
-                "checkForUpdates error",
-                err,
-            )
-        })
-        .then(() => {
-            return loadLocaleFromFile(env.deviceFullLocale)
-        })
-        .then(localeFromFile => {
-            if (localeFromFile) {
-                setLocale(env.deviceFullLocale, localeFromFile)
-            } else {
-                return loadLocaleFromFile(env.deviceLocale)
-            }
-        })
-        .then(localeFromFile => {
-            if (!env.selectedLocale) {
-                if (localeFromFile) {
-                    setLocale(env.deviceLocale, localeFromFile)
-                } else {
-                    return loadDefaultLocale()
-                }
-            }
-        })
-        .catch(err => {
-            xLog(
-                "checkLocale error",
-                err,
-                err.stack,
-            );
-            throw err;
-        })
-}
+const appI18NFolder: Folder = currentApp.getFolder(
+    I18N,
+) as Folder;
+const documentsI18NFolder: Folder = documents.getFolder(
+    I18N,
+) as Folder;
 
-function copyVersions() {
-    if (!documentsFolder.contains(VERSIONS_FILE)) {
-        const appFile = <File>appFolder.getFile(VERSIONS_FILE);
-        const documentsFile = <File>documentsFolder.getFile(VERSIONS_FILE);
-        return appFile.readText().then(fileData => {
-            return documentsFile.writeText(fileData)
-        })
+function copyVersions(): Promise<void> {
+    if (!documentsI18NFolder.contains(VERSIONS_FILE)) {
+        const appFile = appI18NFolder.getFile(
+            VERSIONS_FILE,
+        ) as File;
+        const documentsFile = documentsI18NFolder.getFile(
+            VERSIONS_FILE,
+        ) as File;
+        return appFile.readText().then(
+            (fileData): Promise<void> => {
+                return documentsFile.writeText(fileData);
+            },
+        );
     }
-    return Promise.resolve()
+    return Promise.resolve();
 }
 
-function loadLocaleFromFile(locale: string) {
+function safeLoadFileFromFolder(
+    fileName: string,
+    folder: Folder,
+): Promise<string> {
+    if (folder.contains(fileName)) {
+        return folder.getFile(fileName).readText();
+    }
+    return Promise.resolve('');
+}
+
+function loadLocaleFromFolder(
+    fileName: string,
+    defaultFileName: string,
+    folder: Folder,
+): Promise<object> {
+    return safeLoadFileFromFolder(fileName, folder).then(
+        (fileData): Promise<object> => {
+            if (String(fileData).trim()) {
+                return JSON.parse(String(fileData));
+            } else {
+                return safeLoadFileFromFolder(
+                    defaultFileName,
+                    folder,
+                ).then((defaultData): object => {
+                    if (String(defaultData).trim()) {
+                        return JSON.parse(String(defaultData));
+                    }
+                });
+            }
+        },
+    );
+}
+
+function loadLocaleFromFile(locale: string): Promise<object> {
     const fileName = `${locale}.json`;
     const defaultFileName = `${locale}.default.json`;
-    if (documentsFolder.contains(fileName) || documentsFolder.contains(defaultFileName)) {
+    if (
+        documentsI18NFolder.contains(fileName) ||
+        documentsI18NFolder.contains(defaultFileName)
+    ) {
         return loadLocaleFromFolder(
             fileName,
             defaultFileName,
-            documentsFolder,
-        )
+            documentsI18NFolder,
+        );
     }
-    if (appFolder.contains(fileName) || appFolder.contains(defaultFileName)) {
+    if (
+        appI18NFolder.contains(fileName) ||
+        appI18NFolder.contains(defaultFileName)
+    ) {
         return loadLocaleFromFolder(
             fileName,
             defaultFileName,
-            appFolder,
-        )
+            appI18NFolder,
+        );
     }
 }
 
-function loadLocaleFromFolder(fileName: string, defaultFileName: string, folder: Folder) {
-    return safeLoadFileFromFolder(fileName, folder)
-        .then(fileData => {
-            if (String(fileData).trim()) {
-                return JSON.parse(String(fileData))
-            } else {
-                return safeLoadFileFromFolder(defaultFileName, folder)
-                    .then(defaultData => {
-                        if (String(defaultData).trim()) {
-                            return JSON.parse(String(defaultData))
-                        }
-                    })
-            }
-        })
-}
-
-function safeLoadFileFromFolder(fileName: string, folder: Folder) {
-    if (folder.contains(fileName)) {
-        return folder.getFile(fileName).readText()
-    }
-    return Promise.resolve('')
-}
-
-function loadLocaleFromServer(locale: string) {
-    return collection(I18N).doc(locale)
+function loadLocaleFromServer(locale: string): Promise<object> {
+    return collection(I18N)
+        .doc(locale)
         .get()
-        .then((querySnaphot) => {
-            return snapshotToArray(querySnaphot)
-        })
+        .then((querySnaphot): object => {
+            return snapshotToArray(querySnaphot);
+        });
 }
 
-function setLocale(locale: string, data: string) {
+function setLocale(locale: string, data: string | object): void {
     env.selectedLocale = locale;
-    env.localeData = typeof data == "string" ? JSON.parse(data) : data;
+    env.localeData =
+        typeof data == 'string' ? JSON.parse(data) : data;
 }
 
-function loadDefaultLocale() {
-    let defaultLocale = "";
-    appFolder.eachEntity((entity: FileSystemEntity) => {
-        const name = entity.name;
-        const isDefault = name.includes("default");
-        if (isDefault) {
-            defaultLocale = name.replace(".default.json", "");
-        }
-        return !isDefault
-    });
+function loadDefaultLocale(): Promise<void> {
+    let defaultLocale = '';
 
     xLog(
-        "using default locale: " + defaultLocale,
+        'search for default locale in app i18n folder. files: ' +
+            appI18NFolder.getEntitiesSync().length,
+    );
+    xLog(
+        'search for default locale in documents i18n folder. files: ' +
+            documentsI18NFolder.getEntitiesSync().length,
     );
 
-    return loadLocaleFromFile(defaultLocale).then(fileData => {
-        if (fileData) {
-            setLocale(defaultLocale, fileData);
-            env.defaultLocale = defaultLocale
+    function onFolderEntity(entity: FileSystemEntity): boolean {
+        const name = entity.name;
+        const isDefault = name.includes('default');
+        if (isDefault) {
+            defaultLocale = name.replace('.default.json', '');
         }
-    })
-}
-
-function checkForUpdates() {
-    return Promise.all(
-        [
-            loadServerVersions(),
-            loadLocalVersions(),
-        ]
-    ).then(([localVersions, serverVersions]) => {
-        const locales = [env.deviceLocale, env.deviceFullLocale];
-        if (env.defaultLocale) {
-            locales.push(env.defaultLocale)
-        }
-        const versionUpdates = { ...localVersions };
-        const updatePromises = [];
-        let updated = false;
-        for (const locale of locales) {
-            if (localVersions[locale] != serverVersions[locale]) {
-                versionUpdates[locale] = Math.max(localVersions[locale], serverVersions[locale]);
-                updated = true;
-                updatePromises.push(
-                    updateLocale(locale)
-                )
-            }
-        }
-        if (updated) {
-            updatePromises.push(
-                writeLocalVersions(
-                    versionUpdates,
-                )
-            )
-        }
-        return updatePromises
-    })
-}
-
-function updateLocale(locale: string) {
-    return loadLocaleFromServer(locale).then(serverData => {
-        if (locale == env.selectedLocale) {
-            env.localeData = serverData
-        }
-        return writeLocaleData(locale, serverData)
-    })
-}
-
-function writeLocaleData(locale: string, data) {
-    let file = <File>documentsFolder.getFile(`${locale}.json`);
-    if (env.defaultLocale == locale) {
-        file = <File>documentsFolder.getFile(`${locale}.default.json`);
+        xLog('i18n file', entity.name, ': ', isDefault);
+        return !isDefault;
     }
-    return file.writeText(
-        JSON.stringify(data)
-    )
+
+    appI18NFolder.eachEntity(onFolderEntity);
+    documentsI18NFolder.eachEntity(onFolderEntity);
+
+    xLog('using default locale: ' + defaultLocale);
+
+    return loadLocaleFromFile(defaultLocale).then(
+        (fileData): void => {
+            if (fileData) {
+                setLocale(defaultLocale, fileData);
+                env.defaultLocale = defaultLocale;
+            }
+        },
+    );
 }
 
-function loadLocalVersions() {
-    const file = <File>documentsFolder.getFile(VERSIONS_FILE);
-    return file.readText().then(fileData => {
-        if (fileData) {
-            return JSON.parse(fileData)
-        } else {
-            return {}
-        }
-    })
-}
-
-function writeLocalVersions(versions: Versions) {
-    const file = <File>documentsFolder.getFile(VERSIONS_FILE);
-    return file.writeText(
-        JSON.stringify(
-            versions
-        )
-    )
-}
-
-function loadServerVersions() {
+function loadServerVersions(): Promise<object> {
     return collection(VERSIONS_COLLECTION)
         .doc(I18N)
         .get()
-        .then(snapshot => {
-            return snapshotToArray(snapshot)
-        })
+        .then((snapshot): object => {
+            return snapshotToArray(snapshot);
+        });
 }
 
-export function localize(key: string, defaultValue?: string) {
-    return String(env.localeData[key] || defaultValue)
-        .replace(/\${(.*)}/g, (_, formatter) => {
-            if (container[formatter]) {
-                return container[formatter]()
+function loadLocalVersions(): Promise<object> {
+    const file = documentsI18NFolder.getFile(
+        VERSIONS_FILE,
+    ) as File;
+    return file.readText().then((fileData): object => {
+        if (fileData) {
+            return JSON.parse(fileData);
+        } else {
+            return {};
+        }
+    });
+}
+
+function writeLocaleData(locale: string, data): Promise<void> {
+    let file = documentsI18NFolder.getFile(
+        `${locale}.json`,
+    ) as File;
+    if (env.defaultLocale == locale) {
+        file = documentsI18NFolder.getFile(
+            `${locale}.default.json`,
+        ) as File;
+    }
+    return file.writeText(JSON.stringify(data));
+}
+
+function updateLocale(locale: string): Promise<void> {
+    return loadLocaleFromServer(locale).then(
+        (serverData: Locale): Promise<void> => {
+            if (locale == env.selectedLocale) {
+                env.localeData = serverData;
             }
-            return ''
+            return writeLocaleData(locale, serverData);
+        },
+    );
+}
+
+function writeLocalVersions(versions: Versions): Promise<void> {
+    const file = documentsI18NFolder.getFile(
+        VERSIONS_FILE,
+    ) as File;
+    return file.writeText(JSON.stringify(versions));
+}
+
+function checkForUpdates(): Promise<void> {
+    return Promise.all([
+        loadServerVersions(),
+        loadLocalVersions(),
+    ])
+        .then(([localVersions, serverVersions]): Promise<
+            void
+        >[] => {
+            const locales = [
+                env.deviceLocale,
+                env.deviceFullLocale,
+            ];
+            if (env.defaultLocale) {
+                locales.push(env.defaultLocale);
+            }
+            const versionUpdates = { ...localVersions };
+            const updatePromises = [];
+            let updated = false;
+            for (const locale of locales) {
+                if (
+                    localVersions[locale] !=
+                    serverVersions[locale]
+                ) {
+                    versionUpdates[locale] = Math.max(
+                        localVersions[locale],
+                        serverVersions[locale],
+                    );
+                    updated = true;
+                    updatePromises.push(updateLocale(locale));
+                }
+            }
+            if (updated) {
+                updatePromises.push(
+                    writeLocalVersions(versionUpdates),
+                );
+            }
+            return updatePromises;
         })
+        .then((): void => {});
 }
 
-export function getLocale() {
-    return env.selectedLocale || deviceLocale
+export function checkLocale(): Promise<void> {
+    xLog('device locale: ' + env.deviceFullLocale);
+
+    return copyVersions()
+        .catch((err): void => {
+            xLog('copyVersions error', err);
+            throw err;
+        })
+        .then(
+            (): Promise<void> => {
+                return checkForUpdates();
+            },
+        )
+        .catch((err): void => {
+            xLog('checkForUpdates error', err);
+        })
+        .then(
+            (): Promise<object> => {
+                return loadLocaleFromFile(env.deviceFullLocale);
+            },
+        )
+        .then(
+            (localeFromFile): Promise<object> => {
+                if (localeFromFile) {
+                    setLocale(
+                        env.deviceFullLocale,
+                        localeFromFile,
+                    );
+                } else {
+                    return loadLocaleFromFile(env.deviceLocale);
+                }
+            },
+        )
+        .then(
+            (localeFromFile): Promise<void> => {
+                if (!env.selectedLocale) {
+                    if (localeFromFile) {
+                        setLocale(
+                            env.deviceLocale,
+                            localeFromFile,
+                        );
+                    } else {
+                        return loadDefaultLocale();
+                    }
+                }
+            },
+        )
+        .catch((err): void => {
+            xLog('checkLocale error', err, err.stack);
+            throw err;
+        });
 }
 
-export function getShortLocale() {
-    return getLocale().slice(0, 2).toLocaleLowerCase();
+export function localize(
+    key: string,
+    defaultValue?: string,
+): string {
+    return String(env.localeData[key] || defaultValue).replace(
+        /\${(.*)}/g,
+        (_, formatter): string => {
+            if (container[formatter]) {
+                return container[formatter]();
+            }
+            return '';
+        },
+    );
+}
+
+export function getLocale(): string {
+    return env.selectedLocale || deviceLocale;
+}
+
+export function getShortLocale(): string {
+    return getLocale()
+        .slice(0, 2)
+        .toLocaleLowerCase();
 }
