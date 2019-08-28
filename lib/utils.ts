@@ -8,38 +8,46 @@ moment.locale(locale);
 
 const polyglotExtensions = {};
 
-export function getLocalizedMonth(index: number) {
+export function getLocalizedMonth(index: number): string {
     return moment.months(index);
 }
 
-export function getLocalizedShortMonth(index: number) {
+export function getPluralizedMonthForDate(date: Date): string {
+    return moment(date)
+        .format('D MMMM')
+        .replace(/\d+/, '')
+        .trim();
+}
+
+export function getLocalizedShortMonth(index: number): string {
     return moment.monthsShort(index);
 }
 
-export function getLocalizedDayNameShort(index: number) {
+export function getLocalizedDayNameShort(index: number): string {
     return moment.weekdaysShort(index);
 }
 
-export function getLocalizedDayNamesShort() {
+export function getLocalizedDayNamesShort(): string {
     return moment.weekdaysShort();
 }
 
-export function getLocalizedDayName(index: number) {
+export function getLocalizedDayName(index: number): string {
     return moment.weekdays(index);
 }
 
-export function getLocalizedDayNames() {
+export function getLocalizedDayNames(): string {
     return moment.weekdays();
 }
 
 export function pluralize(
     key: string,
     forms: string,
-    smart_count: number,
-) {
+    smartCount: number,
+): string {
     if (!polyglotExtensions[key]) {
         polyglotExtensions[key] = forms;
         polyglot.extend(polyglotExtensions);
     }
-    return polyglot.t(key, { smart_count });
+    // eslint-disable-next-line @typescript-eslint/camelcase
+    return polyglot.t(key, { smart_count: smartCount });
 }

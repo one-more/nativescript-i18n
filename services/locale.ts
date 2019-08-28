@@ -342,7 +342,7 @@ export function localize(
             if (container[formatter]) {
                 return container[formatter]();
             }
-            return '';
+            return _;
         },
     );
 }
